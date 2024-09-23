@@ -62,7 +62,7 @@ const MaritimeFlagQuiz = () => {
 
   useEffect(() => {
     newQuestion();
-  }, []);
+  }, [newQuestion]); // Add newQuestion to the dependency array
 
   return (
     <Card className="w-full max-w-2xl mx-auto relative">

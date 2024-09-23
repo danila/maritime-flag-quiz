@@ -1,9 +1,9 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  images: {
-    domains: ['upload.wikimedia.org'],
-  },
   output: 'export',
+  images: {
+    unoptimized: true,
+  },
 }
 
 module.exports = nextConfig
