@@ -4,6 +4,8 @@ const nextConfig = {
   images: {
     unoptimized: true,
   },
+  basePath: '/maritime-flag-quiz',
+  assetPrefix: '/maritime-flag-quiz/',
 }
 
 module.exports = nextConfig
