@@ -48,7 +48,9 @@ module.exports = {
   				'3': 'hsl(var(--chart-3))',
   				'4': 'hsl(var(--chart-4))',
   				'5': 'hsl(var(--chart-5))'
-  			}
+  			},
+				'wiki-blue': '#0645ad'
+
   		},
   		borderRadius: {
   			lg: 'var(--radius)',

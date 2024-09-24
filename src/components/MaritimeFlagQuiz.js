@@ -1,11 +1,10 @@
-'use client'
+'use client';
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import Image from 'next/image';
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { CheckCircle2, XCircle, ArrowRight } from 'lucide-react'
-
+import { CheckCircle2, XCircle, Loader2, RefreshCw, ArrowRight } from 'lucide-react'
 
 const flags = [
   { letter: '~', name: 'Code Pennant', russianName: 'Вымпел', url: 'flags/~_Code_Pennant.svg', meaning: 'Вымпел свода и ответный вымпел' },
@@ -38,135 +37,198 @@ const flags = [
 ];
 
 const MaritimeFlagQuiz = () => {
-  const [currentFlag, setCurrentFlag] = useState({});
+  const [currentFlag, setCurrentFlag] = useState(null);
   const [options, setOptions] = useState([]);
   const [score, setScore] = useState(0);
   const [totalQuestions, setTotalQuestions] = useState(0);
+  const [guessedFlags, setGuessedFlags] = useState([]);
   const [selectedAnswer, setSelectedAnswer] = useState(null);
-  const [progress, setProgress] = useState(0);
-
-  const shuffleArray = (array) => {
-    for (let i = array.length - 1; i > 0; i--) {
-      const j = Math.floor(Math.random() * (i + 1));
-      [array[i], array[j]] = [array[j], array[i]];
-    }
-    return array;
-  };
-
-  const newQuestion = useCallback(() => {
-    const randomFlag = flags[Math.floor(Math.random() * flags.length)];
-    setCurrentFlag(randomFlag);
-
-    const incorrectOptions = shuffleArray(flags.filter(flag => flag.meaning !== randomFlag.meaning))
-      .slice(0, 3)
-      .map(flag => flag.meaning);
-
-    setOptions(shuffleArray([randomFlag.meaning, ...incorrectOptions]));
-    setSelectedAnswer(null);
-    setProgress(0);
-  }, []);
-
-  const handleAnswer = useCallback((selectedMeaning) => {
-    setSelectedAnswer(selectedMeaning);
-    setTotalQuestions(prev => prev + 1);
-    const correct = selectedMeaning === currentFlag.meaning;
-
-    if (correct) {
-      setScore(prev => prev + 1);
-      let startTime = Date.now();
-      const interval = setInterval(() => {
-        const elapsedTime = Date.now() - startTime;
-        const newProgress = Math.min((elapsedTime / 2000) * 100, 100);  // 2 seconds
-        setProgress(newProgress);
-        if (newProgress === 100) {
-          clearInterval(interval);
-          newQuestion();
-        }
-      }, 16);
-    }
-  }, [currentFlag.meaning, newQuestion]);
+  const [imageLoaded, setImageLoaded] = useState(false);
+  const [quizState, setQuizState] = useState('unanswered'); // 'unanswered', 'correct', 'incorrect'
+  const [progressValue, setProgressValue] = useState(0);
+  const timerRef = useRef(null);
+  const guessedFlagsRef = useRef(guessedFlags);
 
   useEffect(() => {
-    newQuestion();
-  }, [newQuestion]);
+    guessedFlagsRef.current = guessedFlags;
+  }, [guessedFlags]);
+
+  const shuffleArray = (array) => {
+    return [...array].sort(() => Math.random() - 0.5);
+  };
+
+  const getNewQuestion = useCallback(() => {
+    setImageLoaded(false);
+    setSelectedAnswer(null);
+    setQuizState('unanswered');
+    setProgressValue(0);
+
+    let availableFlags = flags.filter(flag => !guessedFlagsRef.current.includes(flag.letter));
+    if (availableFlags.length === 0) {
+      availableFlags = flags;
+      setGuessedFlags([]);
+    }
+
+    const newFlag = availableFlags[Math.floor(Math.random() * availableFlags.length)];
+    setCurrentFlag(newFlag);
+
+    const incorrectOptions = shuffleArray(flags.filter(flag => flag.letter !== newFlag.letter))
+      .slice(0, 3)
+      .map(flag => ({ letter: flag.letter, name: flag.name, russianName: flag.russianName, meaning: flag.meaning }));
+
+    setOptions(shuffleArray([
+      { letter: newFlag.letter, name: newFlag.name, russianName: newFlag.russianName, meaning: newFlag.meaning },
+      ...incorrectOptions
+    ]));
+  }, []);
+
+  const handleAnswer = (selectedOption) => {
+    if (quizState !== 'unanswered') return;
+
+    setSelectedAnswer(selectedOption);
+    setTotalQuestions(prev => prev + 1);
+
+    if (selectedOption.letter === currentFlag.letter) {
+      setScore(prev => prev + 1);
+      setGuessedFlags(prev => [...prev, currentFlag.letter]);
+      setQuizState('correct');
+      startProgressBar();
+    } else {
+      setQuizState('incorrect');
+    }
+  };
+
+  const startProgressBar = () => {
+    setProgressValue(0);
+    const interval = 33.33; // Update roughly 30 times per second
+    const increment = (100 / (2000 / interval)); // 100% over 3 seconds
+
+    if (timerRef.current) clearInterval(timerRef.current);
+
+    timerRef.current = setInterval(() => {
+      setProgressValue(prevProgress => {
+        const newProgress = prevProgress + increment;
+
+        if (newProgress >= 100) {
+          clearInterval(timerRef.current);
+          getNewQuestion();
+          return 100;
+        } else {
+          return newProgress;
+        }
+      });
+    }, interval);
+  };
+
+  const handleNextQuestion = () => {
+    if (timerRef.current) clearInterval(timerRef.current);
+    getNewQuestion();
+  };
+
+  const resetQuiz = () => {
+    if (timerRef.current) clearInterval(timerRef.current);
+    setScore(0);
+    setTotalQuestions(0);
+    setGuessedFlags([]);
+    getNewQuestion();
+  };
+
+  useEffect(() => {
+    getNewQuestion();
+    return () => {
+      if (timerRef.current) clearInterval(timerRef.current);
+    };
+  }, []);
+
+  if (!currentFlag) return null;
 
   return (
-    <Card className="w-full max-w-2xl mx-auto relative">
-      <CardHeader>
-        <CardTitle className="text-center">Морские сигнальные флаги</CardTitle>
+    <Card className="w-full max-w-2xl mx-auto relative overflow-hidden border border-gray-200">
+      <CardHeader className="bg-gray-100 border-b border-gray-200 p-4">
+        <CardTitle className="text-center text-2xl font-bold text-gray-800">Морские сигнальные флаги</CardTitle>
       </CardHeader>
-      <CardContent>
-        <div className="text-center mb-4">
-          <p className="text-2xl font-bold mb-2">Что означает этот флаг?</p>
-          <Image
-            src={currentFlag.url}
-            alt={`${currentFlag.name} flag`}
-            width={128}
-            height={128}
-            className="mx-auto object-contain mb-4"
-          />
+      <CardContent className="p-4 bg-white">
+        <div className="text-center mb-6">
+          <p className="text-xl font-semibold mb-4 text-gray-700">Что означает этот флаг?</p>
+          <div className="relative" style={{ height: '300px', width: '100%', maxWidth: '450px', margin: '0 auto' }}>
+            {!imageLoaded && (
+              <div className="absolute inset-0 flex items-center justify-center">
+                <Loader2 className="w-12 h-12 animate-spin text-gray-500" />
+              </div>
+            )}
+            <Image
+              src={currentFlag.url}
+              alt={`${currentFlag.name} flag`}
+              fill
+              className={`object-contain transition-opacity duration-300 ${imageLoaded ? 'opacity-100' : 'opacity-0'}`}
+              style={{ border: '1px solid rgb(6, 69, 173)' }}
+              onLoad={() => setImageLoaded(true)}
+              onError={() => setImageLoaded(true)}
+              priority
+            />
+          </div>
         </div>
-        <div className="grid grid-cols-1 gap-2 mb-4">
+        <div className="grid grid-cols-1 gap-3 mb-6">
           {options.map((option, index) => (
             <Button
               key={index}
               onClick={() => handleAnswer(option)}
-              className="w-full relative text-left h-auto py-3 px-4 whitespace-normal"
-              variant="outline"
-              disabled={selectedAnswer !== null}
-              style={{
-                backgroundColor: selectedAnswer === option
-                  ? option === currentFlag.meaning
-                    ? '#d1fae5' // light green for correct
-                    : '#fee2e2' // light red for incorrect
-                  : '',
-                borderColor: selectedAnswer === option
-                  ? option === currentFlag.meaning
-                    ? '#34d399' // medium green for correct
-                    : '#f87171' // medium red for incorrect
-                  : ''
-              }}
+              className={`w-full relative text-left h-auto py-4 px-6 text-sm font-medium transition-all border ${
+                quizState !== 'unanswered'
+                  ? option.letter === currentFlag.letter
+                    ? 'bg-green-50 text-green-800 border-green-200'
+                    : option === selectedAnswer
+                    ? 'bg-red-50 text-red-800 border-red-200'
+                    : 'bg-gray-50 text-gray-800 border-gray-200'
+                  : 'bg-white text-gray-800 border-gray-200 hover:bg-gray-50'
+              }`}
+              disabled={quizState !== 'unanswered'}
             >
-              <span className="pr-6">{option}</span>
-              {selectedAnswer === option && (
-                option === currentFlag.meaning
-                  ? <CheckCircle2 className="absolute right-2 top-1/2 transform -translate-y-1/2 text-green-600" size={20} />
-                  : <XCircle className="absolute right-2 top-1/2 transform -translate-y-1/2 text-red-600" size={20} />
-              )}
-              {selectedAnswer !== null && option === currentFlag.meaning && selectedAnswer !== option && (
-                <CheckCircle2 className="absolute right-2 top-1/2 transform -translate-y-1/2 text-green-600" size={20} />
+              <div className="pr-8 flex flex-col items-start w-full">
+                <span className="font-bold text-left">{option.letter} {option.name}</span>
+                <span className="text-xs mt-1 text-left break-words w-full whitespace-normal">{option.meaning}</span>
+              </div>
+              {quizState !== 'unanswered' && (
+                option.letter === currentFlag.letter
+                  ? <CheckCircle2 className="absolute right-4 top-1/2 transform -translate-y-1/2 text-green-600" size={24} />
+                  : option === selectedAnswer
+                  ? <XCircle className="absolute right-4 top-1/2 transform -translate-y-1/2 text-red-600" size={24} />
+                  : null
               )}
             </Button>
           ))}
         </div>
-        {selectedAnswer && (
-          <div className="mt-4 p-4 bg-gray-100 rounded-md">
-            <p className="font-bold">{currentFlag.russianName} ({currentFlag.name}) - {currentFlag.letter}</p>
-            {selectedAnswer !== currentFlag.meaning && (
-              <p className="mt-2 text-red-600">Правильный ответ: {currentFlag.meaning}</p>
-            )}
+        {quizState !== 'unanswered' && (
+          <div className="mt-4 p-4 bg-gray-50 rounded-md border border-gray-200">
+            <p className="font-bold text-gray-800">{currentFlag.russianName} ({currentFlag.name}) - {currentFlag.letter}</p>
+            <p className="mt-2 text-gray-700">{currentFlag.meaning}</p>
           </div>
         )}
-        <div className="mt-4 text-center">
-          <p>Счёт: {score} / {totalQuestions}</p>
-          {selectedAnswer !== null && selectedAnswer !== currentFlag.meaning && (
-            <Button onClick={newQuestion} className="mt-2 w-full">
-              Следующий флаг <ArrowRight className="ml-2 h-4 w-4" />
+        {quizState === 'correct' && (
+          <div className="mt-4">
+            <div className="bg-gray-200 rounded-full h-2.5 dark:bg-gray-700">
+              <div
+                className="bg-blue-600 h-2.5 rounded-full transition-all duration-100 ease-linear"
+                style={{ width: `${progressValue}%` }}
+              ></div>
+            </div>
+          </div>
+        )}
+        {quizState === 'incorrect' && (
+          <div className="mt-4 flex justify-center">
+            <Button onClick={handleNextQuestion} className="bg-blue-500 text-white">
+              Next Flag <ArrowRight className="ml-2 h-4 w-4" />
             </Button>
-          )}
+          </div>
+        )}
+        <div className="mt-6 flex justify-between items-center">
+          <p className="text-lg font-semibold text-gray-800">Счёт: {score} / {totalQuestions}</p>
+          <p className="text-lg font-semibold text-gray-800">Угадано флагов: {guessedFlags.length} / {flags.length}</p>
+          <Button onClick={resetQuiz} className="bg-blue-500 text-white">
+            <RefreshCw className="mr-2 h-4 w-4" /> Restart Quiz
+          </Button>
         </div>
       </CardContent>
-      <div
-        style={{
-          position: 'absolute',
-          bottom: 0,
-          left: 0,
-          height: '4px',
-          backgroundColor: '#10B981',
-          width: `${progress}%`,
-          transition: 'width 0.1s linear'
-        }}
-      />
     </Card>
   );
 };
